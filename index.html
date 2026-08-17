@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Painting Check-In">
+<meta name="theme-color" content="#171616">
+<title>Painting Check-In</title>
+<!-- Used when served over https (GitHub Pages); harmlessly absent on a local file. -->
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<style>
+:root{
+  /* palette sampled from edmondfinearts.com — dark end */
+  --rose:#D74674;
+  --rose-dim:#8E2C4C;
+  --gold:#E6BD46;
+  --ink:#171616;
+  --ink-2:#211F20;
+  --ink-3:#2B2929;
+  --char:#333232;
+  --line:#403D3E;
+  --paper:#FDFBFC;
+  --muted:#9B9496;
+  --ok:#4E9E7E;
+
+  /* Futura is the face the studio site uses and ships with iPadOS —
+     no webfont fetch, so the kiosk renders identically offline. */
+  --head:'Futura','Futura PT','Century Gothic','Trebuchet MS',sans-serif;
+  --body:'Avenir Next','Avenir','Futura','Century Gothic','Segoe UI',-apple-system,sans-serif;
+  --r:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  margin:0;background:var(--ink);color:var(--paper);
+  font-family:var(--body);
+  -webkit-font-smoothing:antialiased;
+  overscroll-behavior:none;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+button,input,select{font:inherit;color:inherit}
+.noselect{-webkit-user-select:none;user-select:none}
+
+/* ---------- shell ---------- */
+header{
+  display:flex;align-items:center;justify-content:space-between;gap:20px;
+  padding:22px 32px 18px;border-bottom:1px solid var(--line);
+}
+.brand{display:flex;flex-direction:column;gap:4px}
+.brand b{
+  font-family:var(--head);font-weight:500;letter-spacing:.30em;
+  font-size:15px;text-transform:uppercase;color:var(--paper);
+}
+.brand span{
+  font-family:var(--head);font-weight:300;letter-spacing:.22em;
+  font-size:11px;text-transform:uppercase;color:var(--rose);
+}
+.rule{height:2px;width:44px;background:var(--gold);margin-top:2px}
+.clock{text-align:right;font-family:var(--head);font-weight:300;line-height:1}
+.clock .t{font-size:34px;letter-spacing:.04em}
+.clock .d{font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--muted);margin-top:6px}
+
+main{padding:26px 32px 40px;min-height:calc(100vh - 118px);display:flex;flex-direction:column;justify-content:center}
+.hint{
+  font-family:var(--head);font-size:11px;letter-spacing:.24em;text-transform:uppercase;
+  color:var(--muted);margin:0 0 18px
+}
+
+/* ---------- paddles ---------- */
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(330px,1fr));gap:18px}
+.card{
+  position:relative;display:flex;align-items:center;gap:20px;
+  background:var(--ink-2);border:1px solid var(--line);border-left:3px solid var(--line);
+  border-radius:var(--r);padding:26px 24px;cursor:pointer;min-height:104px;
+  transition:border-color .18s,background .18s,transform .08s;
+}
+.card:active{transform:scale(.985)}
+.card.in{border-left-color:var(--rose);background:var(--ink-3)}
+.who{flex:1;min-width:0}
+.who .n{
+  font-family:var(--head);font-weight:500;font-size:21px;letter-spacing:.06em;
+  text-transform:uppercase;white-space:nowrap;overflow:hidden;text-overflow:ellipsis
+}
+.who .s{font-size:12.5px;letter-spacing:.06em;color:var(--muted);margin-top:5px}
+.card.in .who .s{color:var(--rose)}
+
+.paddle{
+  flex:0 0 auto;width:112px;height:56px;border-radius:999px;
+  background:var(--char);border:1px solid var(--line);
+  position:relative;transition:background .22s,border-color .22s;
+}
+.card.in .paddle{background:var(--rose-dim);border-color:var(--rose)}
+.paddle i{
+  position:absolute;top:4px;left:4px;width:46px;height:46px;border-radius:50%;
+  background:var(--paper);transition:transform .22s cubic-bezier(.4,1.4,.5,1);
+  box-shadow:0 2px 8px rgba(0,0,0,.45)
+}
+.card.in .paddle i{transform:translateX(54px);background:var(--gold)}
+.paddle em{
+  position:absolute;top:0;bottom:0;display:flex;align-items:center;
+  font-family:var(--head);font-style:normal;font-size:10px;letter-spacing:.2em;
+}
+.paddle .lo{right:14px;color:var(--muted)}
+.paddle .li{left:14px;color:var(--paper);opacity:0}
+.card.in .paddle .lo{opacity:0}
+.card.in .paddle .li{opacity:1}
+
+/* ---------- toast ---------- */
+#toast{
+  position:fixed;left:50%;bottom:38px;transform:translate(-50%,140%);
+  background:var(--ink-3);border:1px solid var(--rose);border-radius:999px;
+  padding:16px 34px;font-family:var(--head);letter-spacing:.16em;font-size:14px;
+  text-transform:uppercase;transition:transform .3s cubic-bezier(.2,1.2,.4,1),opacity .25s;
+  box-shadow:0 14px 40px rgba(0,0,0,.6);z-index:80;white-space:nowrap;
+  opacity:0;pointer-events:none
+}
+#toast.show{transform:translate(-50%,0);opacity:1}
+#toast.out{border-color:var(--gold)}
+
+/* ---------- admin trigger ---------- */
+.admin-dot{
+  position:fixed;right:16px;bottom:16px;width:46px;height:46px;border-radius:50%;
+  background:transparent;border:1px solid var(--line);color:var(--muted);
+  display:flex;align-items:center;justify-content:center;font-size:16px;z-index:60
+}
+
+/* ---------- modal / admin ---------- */
+.veil{position:fixed;inset:0;background:rgba(10,9,9,.86);display:none;z-index:100}
+.veil.show{display:block}
+.sheet{
+  position:absolute;inset:24px;background:var(--ink-2);border:1px solid var(--line);
+  border-radius:18px;display:flex;flex-direction:column;overflow:hidden
+}
+.sheet.small{
+  inset:auto;left:50%;top:50%;transform:translate(-50%,-50%);
+  width:min(420px,90vw);height:auto;padding:34px
+}
+.sheet h2{
+  font-family:var(--head);font-weight:400;letter-spacing:.22em;text-transform:uppercase;
+  font-size:14px;margin:0;color:var(--paper)
+}
+.sheet-head{
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  padding:20px 26px;border-bottom:1px solid var(--line);flex:0 0 auto
+}
+.tabs{display:flex;gap:8px}
+.tab{
+  background:none;border:1px solid var(--line);border-radius:999px;padding:9px 18px;
+  font-family:var(--head);font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)
+}
+.tab.on{border-color:var(--rose);color:var(--paper);background:var(--ink-3)}
+.sheet-body{flex:1;overflow:auto;-webkit-overflow-scrolling:touch;padding:22px 26px 30px}
+.pane{display:none}.pane.on{display:block}
+
+.btn{
+  background:var(--rose);border:1px solid var(--rose);color:#fff;border-radius:10px;
+  padding:12px 20px;font-family:var(--head);font-size:12px;letter-spacing:.16em;
+  text-transform:uppercase
+}
+.btn.ghost{background:transparent;border-color:var(--line);color:var(--muted)}
+.btn.gold{background:transparent;border-color:var(--gold);color:var(--gold)}
+.btn.danger{background:transparent;border-color:var(--rose-dim);color:var(--rose)}
+.btn:active{opacity:.75}
+
+label.f{display:block;margin-bottom:14px}
+label.f span{
+  display:block;font-family:var(--head);font-size:10px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--muted);margin-bottom:6px
+}
+input,select{
+  width:100%;background:var(--ink);border:1px solid var(--line);border-radius:10px;
+  padding:13px 14px;font-size:16px
+}
+input:focus,select:focus{outline:none;border-color:var(--rose)}
+
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;align-items:end;margin-bottom:18px}
+.rowbtns{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:20px}
+
+table{width:100%;border-collapse:collapse;font-size:14px}
+th{
+  text-align:left;font-family:var(--head);font-weight:400;font-size:10px;letter-spacing:.2em;
+  text-transform:uppercase;color:var(--muted);padding:10px 12px;border-bottom:1px solid var(--line);
+  position:sticky;top:-22px;background:var(--ink-2)
+}
+td{padding:12px;border-bottom:1px solid rgba(64,61,62,.5);vertical-align:middle}
+tr:last-child td{border-bottom:none}
+.pill{
+  display:inline-block;padding:4px 12px;border-radius:999px;font-family:var(--head);
+  font-size:10px;letter-spacing:.16em;text-transform:uppercase;border:1px solid
+}
+.pill.in{color:var(--rose);border-color:var(--rose-dim)}
+.pill.out{color:var(--gold);border-color:rgba(230,189,70,.45)}
+.x{background:none;border:none;color:var(--muted);font-size:18px;padding:4px 8px}
+.empty{color:var(--muted);text-align:center;padding:40px 0;font-family:var(--head);letter-spacing:.16em;text-transform:uppercase;font-size:12px}
+.meta{color:var(--muted);font-size:12.5px;line-height:1.7;margin:0 0 18px}
+.sec{font-family:var(--head);font-size:11px;letter-spacing:.22em;text-transform:uppercase;color:var(--gold);margin:26px 0 12px}
+.sec:first-child{margin-top:0}
+.keypad{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:18px}
+.keypad button{
+  background:var(--ink);border:1px solid var(--line);border-radius:12px;padding:18px 0;
+  font-family:var(--head);font-size:20px
+}
+.dots{display:flex;gap:12px;justify-content:center;margin-top:20px}
+.dots i{width:12px;height:12px;border-radius:50%;border:1px solid var(--line);display:block}
+.dots i.f{background:var(--rose);border-color:var(--rose)}
+@media (max-width:820px){
+  header{padding:16px 20px}main{padding:20px}
+  .clock .t{font-size:26px}
+  .grid{grid-template-columns:1fr}
+  .sheet{inset:10px}.sheet-body{padding:18px}
+}
+</style>
+</head>
+<body class="noselect">
+
+<header>
+  <div class="brand">
+    <b>Edmond Fine Arts</b>
+    <span>Painting Studio &middot; Check&nbsp;In / Check&nbsp;Out</span>
+    <div class="rule"></div>
+  </div>
+  <div class="clock"><div class="t" id="clockT">--:--</div><div class="d" id="clockD">—</div></div>
+</header>
+
+<main>
+  <p class="hint">Tap your paddle to check in &middot; tap again to check out</p>
+  <div class="grid" id="grid"></div>
+</main>
+
+<button class="admin-dot" id="adminBtn" aria-label="Admin">&#9881;</button>
+<div id="toast"></div>
+
+<!-- PIN -->
+<div class="veil" id="pinVeil">
+  <div class="sheet small">
+    <h2>Administrator</h2>
+    <p class="meta" style="margin-top:14px">Enter admin passcode.</p>
+    <div class="dots" id="dots"><i></i><i></i><i></i><i></i></div>
+    <div class="keypad" id="keypad"></div>
+    <button class="btn ghost" style="width:100%;margin-top:14px" onclick="closePin()">Cancel</button>
+  </div>
+</div>
+
+<!-- ADMIN -->
+<div class="veil" id="adminVeil">
+  <div class="sheet">
+    <div class="sheet-head">
+      <h2>Admin Console <span style="color:var(--muted);letter-spacing:.14em">&mdash; <span id="adminName">admin</span></span></h2>
+      <div class="tabs">
+        <button class="tab on" data-pane="logPane">Records</button>
+        <button class="tab" data-pane="userPane">Users</button>
+        <button class="tab" data-pane="dbPane">Database</button>
+        <button class="tab ghost" onclick="closeAdmin()" style="border-color:var(--rose);color:var(--rose)">Exit</button>
+      </div>
+    </div>
+    <div class="sheet-body">
+
+      <!-- records -->
+      <div class="pane on" id="logPane">
+        <div class="filters">
+          <label class="f"><span>User</span><select id="fUser"></select></label>
+          <label class="f"><span>Direction</span>
+            <select id="fDir"><option value="">All</option><option value="in">Check In</option><option value="out">Check Out</option></select>
+          </label>
+          <label class="f"><span>From date</span><input type="date" id="fFrom"></label>
+          <label class="f"><span>To date</span><input type="date" id="fTo"></label>
+          <label class="f"><span>Search</span><input type="search" id="fQ" placeholder="name, time, date…"></label>
+        </div>
+        <div class="rowbtns">
+          <button class="btn ghost" onclick="clearFilters()">Reset</button>
+          <button class="btn gold" onclick="exportCSV('live')">Export CSV</button>
+          <button class="btn gold" onclick="exportJSON('live')">Export JSON</button>
+          <span class="meta" style="margin:0;align-self:center" id="count"></span>
+        </div>
+        <table><thead><tr>
+          <th>Date</th><th>Time</th><th>User</th><th>Action</th><th>Session</th><th></th>
+        </tr></thead><tbody id="logRows"></tbody></table>
+        <div class="empty" id="logEmpty" hidden>No records match</div>
+      </div>
+
+      <!-- users -->
+      <div class="pane" id="userPane">
+        <div class="sec">Add user</div>
+        <div class="filters">
+          <label class="f"><span>Full name</span><input id="newName" placeholder="e.g. Jack Burton"></label>
+          <label class="f"><span></span><button class="btn" onclick="addUser()" style="width:100%">Add User</button></label>
+        </div>
+        <div class="sec">Roster</div>
+        <table><thead><tr>
+          <th>Name</th><th>Status</th><th>Added</th><th>Last access</th><th>Records</th><th></th>
+        </tr></thead><tbody id="userRows"></tbody></table>
+      </div>
+
+      <!-- database -->
+      <div class="pane" id="dbPane">
+        <div class="sec">Storage health</div>
+        <div id="storeBox"></div>
+        <p class="meta">
+          Records are written to two places at once. To confirm this kiosk browser keeps them:
+          tap a paddle, fully quit the app from the app switcher, reopen it, and check that the
+          line above still reports a restore and the record count is unchanged.
+        </p>
+
+        <div class="sec">Retention &amp; archive</div>
+        <p class="meta">
+          Records are archived <b>1 year after last access</b>. A run moves any entry older than
+          12 months relative to that user's most recent activity into the archive table, and archives
+          the full history of any user dormant for over a year. Archive is retained, searchable and exportable.
+        </p>
+        <div class="rowbtns">
+          <button class="btn" onclick="runArchive(true)">Run archive now</button>
+          <button class="btn gold" onclick="exportCSV('archive')">Export archive CSV</button>
+          <button class="btn gold" onclick="exportJSON('archive')">Export archive JSON</button>
+        </div>
+        <p class="meta" id="archInfo"></p>
+
+        <div class="sec">Full database</div>
+        <div class="rowbtns">
+          <button class="btn gold" onclick="exportJSON('all')">Export full DB (JSON)</button>
+          <button class="btn gold" onclick="exportCSV('all')">Export full DB (CSV)</button>
+          <button class="btn ghost" onclick="document.getElementById('imp').click()">Import DB</button>
+          <input type="file" id="imp" accept="application/json" hidden>
+        </div>
+        <p class="meta" id="dbInfo"></p>
+
+        <div class="sec">Security</div>
+        <div class="filters">
+          <label class="f"><span>New admin passcode (4 digits)</span><input id="newPin" inputmode="numeric" maxlength="4" placeholder="••••"></label>
+          <label class="f"><span></span><button class="btn" style="width:100%" onclick="changePin()">Update Passcode</button></label>
+        </div>
+
+        <div class="sec">Danger zone</div>
+        <div class="rowbtns">
+          <button class="btn danger" onclick="purge('archive')">Purge archive</button>
+          <button class="btn danger" onclick="purge('logs')">Clear live records</button>
+          <button class="btn danger" onclick="purge('all')">Factory reset</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   Painting Check-In — single-file kiosk. Runs from a local file
+   inside a kiosk browser app: no server, no network, no login.
+
+   Storage: kiosk browser apps differ in what they keep across a
+   restart, and some clear web data on a schedule. Every change is
+   written to BOTH localStorage and IndexedDB; on boot we load
+   whichever copy is newer. Either backend surviving is enough.
+   Storage health tab reports which one actually answered.
+   ============================================================ */
+const KEY='efa_painting_v1', YEAR=365*24*60*60*1000;
+const uid=()=>Date.now().toString(36)+Math.random().toString(36).slice(2,7);
+
+const seed=()=>({
+  admin:{user:'admin',pin:'1986',rights:'rwx'},
+  users:['Mikey Walsh','Chunk Cohen','Mouth Devereaux','Data Wang']
+        .map(n=>({id:uid(),name:n,createdAt:Date.now(),status:'out',since:null})),
+  logs:[], archive:[], lastArchive:null, lastExport:null, savedAt:0
+});
+
+const health={local:null,idb:null,restored:'',lastSave:null,note:''};
+const valid=d=>d&&Array.isArray(d.users)&&Array.isArray(d.logs);
+
+/* -- localStorage -- */
+function readLS(){
+  try{const r=JSON.parse(localStorage.getItem(KEY));health.local=true;return valid(r)?r:null}
+  catch(e){health.local=false;health.note=e.message;return null}
+}
+function writeLS(d){
+  try{localStorage.setItem(KEY,JSON.stringify(d));health.local=true;return true}
+  catch(e){health.local=false;health.note=e.message;return false}
+}
+
+/* -- IndexedDB (some webviews never settle the open request, hence the timeout) -- */
+let idbConn=null;
+const idbOpen=()=>new Promise(res=>{
+  let done=false; const fin=v=>{if(!done){done=true;res(v)}};
+  setTimeout(()=>fin(null),1500);
+  try{
+    if(!self.indexedDB)return fin(null);
+    const rq=indexedDB.open('efa_painting',1);
+    rq.onupgradeneeded=()=>rq.result.createObjectStore('kv');
+    rq.onsuccess=()=>{health.idb=true;fin(rq.result)};
+    rq.onerror=rq.onblocked=()=>{health.idb=false;fin(null)};
+  }catch(e){health.idb=false;health.note=e.message;fin(null)}
+});
+const idbGet=()=>new Promise(res=>{
+  if(!idbConn)return res(null);
+  try{
+    const rq=idbConn.transaction('kv','readonly').objectStore('kv').get(KEY);
+    rq.onsuccess=()=>res(valid(rq.result)?rq.result:null);
+    rq.onerror=()=>res(null);
+  }catch(e){res(null)}
+});
+function idbPut(d){
+  if(!idbConn)return;
+  try{idbConn.transaction('kv','readwrite').objectStore('kv').put(JSON.parse(JSON.stringify(d)),KEY)}
+  catch(e){health.idb=false;health.note=e.message}
+}
+
+let db=seed();
+function save(){
+  db.savedAt=Date.now();
+  const ok=writeLS(db);
+  idbPut(db);
+  health.lastSave=db.savedAt;
+  return ok;
+}
+
+/* ---------- time helpers ---------- */
+const fTime=ts=>new Date(ts).toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+const fDate=ts=>new Date(ts).toLocaleDateString([],{year:'numeric',month:'short',day:'2-digit'});
+const iso=ts=>{const d=new Date(ts);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
+function dur(ms){const m=Math.round(ms/60000);return (m>=60?Math.floor(m/60)+'h ':'')+(m%60)+'m'}
+
+/* ---------- clock ---------- */
+function tick(){
+  const n=new Date();
+  clockT.textContent=n.toLocaleTimeString([],{hour:'numeric',minute:'2-digit'});
+  clockD.textContent=n.toLocaleDateString([],{weekday:'long',month:'long',day:'numeric'});
+}
+setInterval(tick,1000);tick();
+
+/* ---------- kiosk ---------- */
+function renderGrid(){
+  const g=document.getElementById('grid');g.innerHTML='';
+  db.users.forEach(u=>{
+    const c=document.createElement('div');
+    c.className='card'+(u.status==='in'?' in':'');
+    c.innerHTML=`<div class="who">
+        <div class="n">${esc(u.name)}</div>
+        <div class="s">${u.status==='in'?'Checked in '+fTime(u.since):'Checked out'}</div>
+      </div>
+      <div class="paddle"><em class="li">In</em><em class="lo">Out</em><i></i></div>`;
+    c.onclick=()=>toggle(u.id);
+    g.appendChild(c);
+  });
+}
+function toggle(id){
+  const u=db.users.find(x=>x.id===id);if(!u)return;
+  const now=Date.now(), dir=u.status==='in'?'out':'in';
+  db.logs.push({id:uid(),userId:u.id,name:u.name,dir,ts:now});
+  u.status=dir; u.since=dir==='in'?now:null; u.lastAccess=now;
+  save(); renderGrid();
+  toast(dir==='in'?`Welcome, ${u.name} — in at ${fTime(now)}`:`Goodbye, ${u.name} — out at ${fTime(now)}`,dir);
+  if(navigator.vibrate)navigator.vibrate(12);
+}
+let tt;
+function toast(msg,dir){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.className='show'+(dir==='out'?' out':'');
+  clearTimeout(tt);tt=setTimeout(()=>t.className='',2600);
+}
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ---------- admin auth ---------- */
+let pin='';
+const kp=document.getElementById('keypad');
+['1','2','3','4','5','6','7','8','9','','0','⌫'].forEach(k=>{
+  const b=document.createElement('button');b.textContent=k;
+  if(!k)b.style.visibility='hidden';
+  b.onclick=()=>{k==='⌫'?pin=pin.slice(0,-1):pin=(pin+k).slice(0,4);drawDots();
+    if(pin.length===4)setTimeout(tryPin,140)};
+  kp.appendChild(b);
+});
+function drawDots(){[...document.querySelectorAll('#dots i')].forEach((d,i)=>d.className=i<pin.length?'f':'')}
+function tryPin(){
+  if(pin===db.admin.pin){closePin();openAdmin()}
+  else{pin='';drawDots();toast('Incorrect passcode','out')}
+}
+document.getElementById('adminBtn').onclick=()=>{pin='';drawDots();pinVeil.classList.add('show')};
+const closePin=()=>pinVeil.classList.remove('show');
+function openAdmin(){
+  adminName.textContent=db.admin.user+' ('+db.admin.rights+')';
+  adminVeil.classList.add('show');refreshAdmin();
+}
+const closeAdmin=()=>{adminVeil.classList.remove('show');renderGrid()};
+document.querySelectorAll('.tab[data-pane]').forEach(t=>t.onclick=()=>{
+  document.querySelectorAll('.tab[data-pane]').forEach(x=>x.classList.remove('on'));
+  document.querySelectorAll('.pane').forEach(p=>p.classList.remove('on'));
+  t.classList.add('on');document.getElementById(t.dataset.pane).classList.add('on');
+});
+
+/* ---------- admin: records ---------- */
+['fUser','fDir','fFrom','fTo','fQ'].forEach(id=>{
+  const el=document.getElementById(id);
+  el.addEventListener(id==='fQ'?'input':'change',renderLogs);
+});
+function clearFilters(){fUser.value='';fDir.value='';fFrom.value='';fTo.value='';fQ.value='';renderLogs()}
+
+function filtered(rows){
+  const q=fQ.value.trim().toLowerCase();
+  const from=fFrom.value?new Date(fFrom.value+'T00:00:00').getTime():null;
+  const to=fTo.value?new Date(fTo.value+'T23:59:59').getTime():null;
+  return rows.filter(r=>{
+    if(fUser.value&&r.userId!==fUser.value)return false;
+    if(fDir.value&&r.dir!==fDir.value)return false;
+    if(from&&r.ts<from)return false;
+    if(to&&r.ts>to)return false;
+    if(q){const hay=(r.name+' '+fDate(r.ts)+' '+fTime(r.ts)+' '+iso(r.ts)+' '+r.dir).toLowerCase();
+      if(!hay.includes(q))return false}
+    return true;
+  }).sort((a,b)=>b.ts-a.ts);
+}
+function sessionOf(r,all){
+  if(r.dir!=='out')return '—';
+  const prev=all.filter(x=>x.userId===r.userId&&x.dir==='in'&&x.ts<r.ts).sort((a,b)=>b.ts-a.ts)[0];
+  return prev?dur(r.ts-prev.ts):'—';
+}
+function renderLogs(){
+  const sel=fUser.value;
+  fUser.innerHTML='<option value="">All users</option>'+
+    db.users.map(u=>`<option value="${u.id}">${esc(u.name)}</option>`).join('');
+  fUser.value=sel;
+  const rows=filtered(db.logs), tb=document.getElementById('logRows');
+  tb.innerHTML=rows.map(r=>`<tr>
+    <td>${fDate(r.ts)}</td><td>${fTime(r.ts)}</td><td>${esc(r.name)}</td>
+    <td><span class="pill ${r.dir}">${r.dir==='in'?'Check In':'Check Out'}</span></td>
+    <td style="color:var(--muted)">${sessionOf(r,db.logs)}</td>
+    <td style="text-align:right"><button class="x" onclick="delLog('${r.id}')">&times;</button></td>
+  </tr>`).join('');
+  logEmpty.hidden=rows.length>0;
+  count.textContent=rows.length+' of '+db.logs.length+' live records';
+}
+function delLog(id){
+  if(!confirm('Delete this record permanently?'))return;
+  db.logs=db.logs.filter(r=>r.id!==id);save();renderLogs();refreshInfo();
+}
+
+/* ---------- admin: users ---------- */
+function lastAccess(u){
+  const l=db.logs.concat(db.archive).filter(r=>r.userId===u.id).map(r=>r.ts);
+  return l.length?Math.max(...l):(u.lastAccess||null);
+}
+function renderUsers(){
+  document.getElementById('userRows').innerHTML=db.users.map(u=>{
+    const la=lastAccess(u), n=db.logs.filter(r=>r.userId===u.id).length;
+    return `<tr>
+      <td>${esc(u.name)}</td>
+      <td><span class="pill ${u.status}">${u.status==='in'?'In':'Out'}</span></td>
+      <td style="color:var(--muted)">${fDate(u.createdAt)}</td>
+      <td style="color:var(--muted)">${la?fDate(la)+' '+fTime(la):'never'}</td>
+      <td style="color:var(--muted)">${n}</td>
+      <td style="text-align:right"><button class="x" onclick="delUser('${u.id}')">&times;</button></td>
+    </tr>`}).join('')||'<tr><td colspan="6" class="empty">No users</td></tr>';
+}
+function addUser(){
+  const n=newName.value.trim();
+  if(!n)return toast('Enter a name','out');
+  db.users.push({id:uid(),name:n,createdAt:Date.now(),status:'out',since:null});
+  newName.value='';save();refreshAdmin();toast(n+' added');
+}
+function delUser(id){
+  const u=db.users.find(x=>x.id===id);
+  if(!confirm('Remove '+u.name+'? Their records move to the archive.'))return;
+  db.archive.push(...db.logs.filter(r=>r.userId===id));
+  db.logs=db.logs.filter(r=>r.userId!==id);
+  db.users=db.users.filter(x=>x.id!==id);
+  save();refreshAdmin();toast(u.name+' removed','out');
+}
+
+/* ---------- retention ---------- */
+function runArchive(manual){
+  const now=Date.now();let moved=0;
+  const byUser={};
+  db.logs.forEach(r=>{(byUser[r.userId]=byUser[r.userId]||[]).push(r)});
+  const keep=[];
+  Object.entries(byUser).forEach(([uidk,rows])=>{
+    const last=Math.max(...rows.map(r=>r.ts));
+    const dormant=now-last>YEAR;             // no access in 12 months → archive everything
+    rows.forEach(r=>{
+      if(dormant||last-r.ts>YEAR){db.archive.push(r);moved++}
+      else keep.push(r);
+    });
+  });
+  db.logs=keep;db.lastArchive=now;save();
+  if(manual){refreshAdmin();toast(moved?moved+' records archived':'Nothing to archive')}
+}
+function purge(what){
+  const msg={archive:'Permanently delete the archive?',logs:'Permanently delete all live records?',
+             all:'Factory reset — delete ALL users, records and archive?'}[what];
+  if(!confirm(msg))return;
+  if(what==='archive')db.archive=[];
+  if(what==='logs'){db.logs=[];db.users.forEach(u=>{u.status='out';u.since=null})}
+  if(what==='all')db=seed();          // save() below rewrites both backends
+  save();refreshAdmin();toast('Done','out');
+}
+
+/* ---------- export / import ---------- */
+function rowsFor(scope){
+  return scope==='archive'?db.archive:scope==='all'?db.logs.concat(db.archive):filtered(db.logs);
+}
+function dl(name,text,type,isBackup){
+  const b=new Blob([text],{type});const a=document.createElement('a');
+  a.href=URL.createObjectURL(b);a.download=name;a.click();
+  setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+  if(isBackup){db.lastExport=Date.now();save();renderStorage()}   // only a full dump counts
+}
+function exportCSV(scope){
+  const rows=rowsFor(scope).slice().sort((a,b)=>b.ts-a.ts);
+  const all=db.logs.concat(db.archive);
+  const csv=['record_id,user,user_id,action,date,time,iso_timestamp,session_length']
+    .concat(rows.map(r=>[r.id,`"${r.name}"`,r.userId,r.dir,iso(r.ts),
+      new Date(r.ts).toLocaleTimeString([],{hour12:false}),new Date(r.ts).toISOString(),
+      sessionOf(r,all)].join(','))).join('\n');
+  dl(`checkin-${scope}-${iso(Date.now())}.csv`,csv,'text/csv',scope==='all');
+}
+function exportJSON(scope){
+  const payload=scope==='all'
+    ? {exported:new Date().toISOString(),...db}
+    : {exported:new Date().toISOString(),scope,users:db.users,records:rowsFor(scope)};
+  dl(`checkin-${scope}-${iso(Date.now())}.json`,JSON.stringify(payload,null,2),'application/json',scope==='all');
+}
+document.getElementById('imp').onchange=e=>{
+  const f=e.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    try{
+      const d=JSON.parse(rd.result);
+      if(!d.users)throw 0;
+      if(!confirm('Replace the current database with this file?'))return;
+      db={admin:d.admin||db.admin,users:d.users,logs:d.logs||d.records||[],
+          archive:d.archive||[],lastArchive:d.lastArchive||null,
+          lastExport:d.lastExport||null,savedAt:0};
+      save();refreshAdmin();renderGrid();toast('Database imported');
+    }catch(x){toast('Invalid database file','out')}
+  };
+  rd.readAsText(f);e.target.value='';
+};
+
+/* ---------- security ---------- */
+function changePin(){
+  const p=newPin.value.trim();
+  if(!/^\d{4}$/.test(p))return toast('Passcode must be 4 digits','out');
+  db.admin.pin=p;newPin.value='';save();toast('Passcode updated');
+}
+
+/* ---------- refresh ---------- */
+function refreshInfo(){
+  dbInfo.textContent=`${db.users.length} users · ${db.logs.length} live records · ${db.archive.length} archived`;
+  archInfo.textContent=db.lastArchive
+    ? `Last archive run ${fDate(db.lastArchive)} ${fTime(db.lastArchive)} · ${db.archive.length} records in archive.`
+    : 'Archive has not been run yet.';
+  renderStorage();
+}
+
+/* Storage health — the one panel worth checking after installing on a new kiosk app. */
+function renderStorage(){
+  const dot=ok=>ok===null?'<span style="color:var(--muted)">— unknown</span>'
+    :ok?'<span style="color:var(--ok)">working</span>'
+       :'<span style="color:var(--rose)">unavailable</span>';
+  const days=db.lastExport?Math.floor((Date.now()-db.lastExport)/86400000):null;
+  const stale=db.logs.length>0&&(days===null||days>14);
+  const both=health.local===false&&health.idb===false;
+
+  storeBox.innerHTML=`
+    <p class="meta">
+      localStorage: ${dot(health.local)} &nbsp;·&nbsp; IndexedDB: ${dot(health.idb)}<br>
+      On launch, restored from <b>${esc(health.restored)}</b>.<br>
+      Last write ${health.lastSave?fDate(health.lastSave)+' '+fTime(health.lastSave):'—'} ·
+      ${db.logs.length} live records held.
+      ${health.note?'<br>Reported: '+esc(health.note):''}
+    </p>
+    ${both?`<p class="meta" style="border:1px solid var(--rose);border-radius:10px;padding:12px 14px;color:var(--rose)">
+      This browser is not storing anything. Records will disappear when the app closes —
+      export now and use a different kiosk browser.</p>`:''}
+    ${stale?`<p class="meta" style="border:1px solid var(--gold);border-radius:10px;padding:12px 14px;color:var(--gold)">
+      ${days===null?'No backup has ever been exported.':'Last backup was '+days+' days ago.'}
+      Export the full database to keep an off-device copy.</p>`:''}`;
+}
+function refreshAdmin(){renderLogs();renderUsers();refreshInfo();renderGrid()}
+
+/* ---------- boot ---------- */
+async function boot(){
+  const ls=readLS();
+  idbConn=await idbOpen();
+  const id=await idbGet();
+
+  if(ls&&id)      health.restored=ls.savedAt===id.savedAt?'localStorage + IndexedDB (in sync)'
+                                 :'newer of localStorage / IndexedDB';
+  else if(ls)     health.restored='localStorage only';
+  else if(id)     health.restored='IndexedDB only';
+  else            health.restored='nothing found — started from a fresh roster';
+
+  db=[ls,id].filter(Boolean).sort((a,b)=>(b.savedAt||0)-(a.savedAt||0))[0]||seed();
+  if(db.savedAt===undefined)db.savedAt=0;
+
+  save();            // re-mirror into whichever backend was missing or stale
+  runArchive(false);
+  renderGrid();
+}
+boot();
+
+/* Served over https, register the worker so the kiosk survives a wifi outage.
+   Skipped on file:// and http, where service workers aren't permitted anyway. */
+if(location.protocol==='https:'&&'serviceWorker' in navigator)
+  navigator.serviceWorker.register('sw.js').catch(()=>{});
+
+document.addEventListener('gesturestart',e=>e.preventDefault());
+document.addEventListener('dblclick',e=>e.preventDefault());
+</script>
+</body>
+</html>
